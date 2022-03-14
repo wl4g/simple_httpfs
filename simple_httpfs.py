@@ -90,7 +90,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         with open(dir_path + self.path + "/" + file_name, 'wb') as file_object:
             shutil.copyfileobj(post_form["file"].file, file_object)
 
-        return self.do_get_index_page(True, "rw")
+        return self.do_get_index_page(True)
 
     def clean_path(self):
         # for example: http://example.com///abcd//1.jpg => /abcd/1.jpg
