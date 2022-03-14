@@ -18,7 +18,8 @@ import configparser
 
 
 class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
-    tpl_file = '/etc/simple_httpfs/index.tpl'
+    form_tpl = '/etc/simplehttpfs/form.tpl'
+    listing_tpl = '/etc/simplehttpfs/index.tpl'
     data_dir = os.getcwd()
 
     # Replace server headers from "Server: BaseHTTP/0.6 Python/3.6.7"
@@ -46,8 +47,6 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         if authorization_header != basic_auth_key:
             self.log_message(
                 "Failure basic authentication. request authorization: '%s', path: '%s'", authorization_header, self.path)
-            self.do_authentication()
-            self.close_connection = True
             return False
 
         return True
@@ -57,21 +56,22 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("WWW-Authenticate", "Basic realm=HttpBasicRealm")
         self.send_header("Content-type", "text/html")
         self.end_headers()
+        self.close_connection = True
+        return False
 
     def do_HEAD(self):
         if not self.is_authenticated("r"):
-            return None
+            return self.do_authentication()
         return self.do_get_index_page(False)
 
     def do_GET(self):
         if not self.is_authenticated("r"):
-            return None
+            return self.do_authentication()
         return self.do_get_index_page(False)
 
     def do_POST(self):
         if not self.is_authenticated("r,w"):
-            self.do_authentication()
-            return None
+            return self.do_authentication()
 
         post_form = cgi.FieldStorage(
             fp=self.rfile,
@@ -90,7 +90,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         with open(dir_path + self.path + "/" + file_name, 'wb') as file_object:
             shutil.copyfileobj(post_form["file"].file, file_object)
 
-        return self.do_get_index_page(True)
+        return self.do_get_index_page(True, "rw")
 
     def clean_path(self):
         # for example: http://example.com///abcd//1.jpg => /abcd/1.jpg
@@ -103,18 +103,19 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             endPart = "/"
         return cleaned_path + endPart
 
-    def is_root_request(self):
-        self.clean_path()
-        if len(self.path) <= 1:
-            return True
+    # def is_root_request(self):
+    #     self.clean_path()
+    #     if len(self.path) <= 1:
+    #         return True
 
-        # for example: http://example.com// => //
-        for part in self.path.split("/"):
-            if len(part) > 0 and part != "/":
-                return False
-        return True
+    #     # for example: http://example.com// => //
+    #     for part in self.path.split("/"):
+    #         if len(part) > 0 and part != "/":
+    #             return False
+    #     return True
 
-    def do_get_index_page(self, is_redirect):
+    def do_get_index_page(self,
+                          is_redirect):
         uri_path = re.split(r'\?|\#', self.clean_path())[0]
         req_file_path = data_dir + uri_path
 
@@ -129,7 +130,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         # Response files html
         if os.path.isdir(req_file_path):
             contents_html = self. render_html_directies(
-                req_file_path, uri_path)
+                req_file_path,
+                uri_path)
             # self.log_message("Render html:\n%s", contents_html)
 
             self.send_response(200)
@@ -188,7 +190,9 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         hostAndPort = self.headers.get('Host', "localhost")
         return schema + hostAndPort
 
-    def render_html_directies(self, req_file_path, uri_path):
+    def render_html_directies(self,
+                              req_file_path,
+                              uri_path):
         self.log_message("Render html by uri: '%s' from directies: '%s'",
                          uri_path, req_file_path)
         try:
@@ -199,7 +203,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
         base_uri = self.get_request_base_uri()
         # uri_path = uri_path = '' if self.path == '/' '' else self.path
-        file_list_html = "<li><a target='_self' href='../'>../</a></li>\n"
+        listing_html = "<li><a target='_self' href='../'>../</a></li>\n"
         for file_name in file_list:
             full_file_name = req_file_path + "/" + file_name
             file_href = base_uri + self.path + file_name
@@ -216,19 +220,33 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                 file_display_name = file_name + "@"
 
             # file_href = urllib.parse.quote(file_href)
-            file_list_html = file_list_html + \
+            listing_html = listing_html + \
                 "<li><a target='_self' href=\"{}\">{}</a><span style='position:absolute;float:right;right:55%;'>{}<span><span style='position:absolute;float:right;right:-100%;'>{} B<span></li>\n".format(
                     file_href, file_display_name, format_mtime, file_size
                 )
 
-        template = open(self.tpl_file)
-        return template.read().format(uri_path, file_list_html).encode()
+        listing_tpl = open(self.listing_tpl, encoding="utf-8")
+        form_content = "<!-- multipart from (non permission) -->"
+        if self.is_authenticated("r,w"):
+            form_content = ""
+            form_lines = open(self.form_tpl, encoding="utf-8").readlines()
+            for line in form_lines:
+                form_content += line
+
+        return listing_tpl.read().format(uri_path, form_content, listing_html).encode()
 
 
-def start_https_server(listen_addr, listen_port, server_version, acl_list,
-                       certificate_file, tpl_file, data_dir):
+def start_https_server(listen_addr,
+                       listen_port,
+                       server_version,
+                       acl_list,
+                       certificate_file,
+                       form_tpl,
+                       listing_tpl,
+                       data_dir):
     SimpleHTTPfsRequestHandler.server_version = server_version
-    SimpleHTTPfsRequestHandler.tpl_file = tpl_file
+    SimpleHTTPfsRequestHandler.form_tpl = form_tpl
+    SimpleHTTPfsRequestHandler.listing_tpl = listing_tpl
     SimpleHTTPfsRequestHandler.data_dir = data_dir
     SimpleHTTPfsRequestHandler.acl_list = acl_list
 
@@ -267,7 +285,7 @@ if __name__ == '__main__':
     #     sys.exit(1)
 
     # Read configuration.
-    config_path = "/etc/simple_httpfs/server.ini"
+    config_path = "/etc/simplehttpfs/server.ini"
     if len(sys.argv) > 1:  # The sys.argv[0] is this file.
         config_path = sys.argv[1]
     cf = configparser.ConfigParser()
@@ -277,7 +295,8 @@ if __name__ == '__main__':
     listen_port = cf.getint("http.server", "listen_port")
     server_version = cf.get("http.server", "server_version")
     cert_file = cf.get("http.server", "cert_file")
-    tpl_file = cf.get("fs.rendering", "tpl_file")
+    form_tpl = cf.get("fs.rendering", "form_tpl")
+    listing_tpl = cf.get("fs.rendering", "listing_tpl")
     data_dir = cf.get("fs.data", "data_dir")
 
     acl_routes = cf.options("http.acl")
@@ -291,5 +310,6 @@ if __name__ == '__main__':
         server_version,
         acl_list,
         cert_file,
-        tpl_file,
+        form_tpl,
+        listing_tpl,
         data_dir)
