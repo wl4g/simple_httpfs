@@ -13,9 +13,11 @@ import urllib
 import cgi
 import http.server
 import ssl
+import configparser
 
 
-class CustomBaseHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
+class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
+    tpl_file = '/etc/simple_httpfs/index.tpl'
     data_dir = '.'
 
     # Replace server headers from "Server: BaseHTTP/0.6 Python/3.6.7"
@@ -25,7 +27,7 @@ class CustomBaseHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     def is_authenticated(self):
         authorization_header = self.headers["Authorization"]
 
-        if authorization_header != self.basic_authentication_key:
+        if authorization_header != self.basic_auth_key:
             self.do_authentication()
             self.close_connection = True
             return False
@@ -39,15 +41,15 @@ class CustomBaseHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_HEAD(self):
-        # print("do_head ...", self)
+        # self.log_message("do_head ...")
         return self.do_get_index_page(False)
 
     def do_GET(self):
-        # print("do_get ...", self)
+        # self.log_message("do_get ...")
         return self.do_get_index_page(False)
 
     def do_POST(self):
-        # print("do_post ...", self)
+        # self.log_message("do_post ...")
         if not self.is_authenticated():
             return self.do_GET()
 
@@ -75,7 +77,7 @@ class CustomBaseHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         uri_path = re.split(r'\?|\#', self.path)[0]
-        #default_req_file_path = os.getcwd() + uri_path
+        # default_req_file_path = os.getcwd() + uri_path
         req_file_path = data_dir + uri_path
 
         if is_redirect:
@@ -177,37 +179,19 @@ class CustomBaseHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                         file_href), file_display_name, format_mtime, file_size
                 )
 
-        return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Microsoft-HTTPSERVER/2.0</title>
-            </head>
-            <body>
-                <h2>Index of: {}</h2>
-                <hr>
-                <form ENCTYPE="multipart/form-data" method="post" onsubmit="javascript:return document.getElementById('file').value.length>0;">
-                    <a style='position:absolute;width:100px;height:30px;margin-top:-2px;background-color:blue;text-align:center;border-radius:30px;color:white;box-shadow:2px 2px 3px #ccacac;font-weight:600;cursor:pointer;line-height:30px;'>Choose file</a>
-                    <input id="file" name="file" type="file" style='position:relative;width:189px;height:30px;left:-88px;top:-6px;z-index:300;opacity:0;border-radius:47px;cursor:pointer;'/>
-                    <input type="submit" value="Upload" style='position:relative;top:-2px;width:100px;height:30px;z-index:300;border-radius:47px;cursor:pointer;background:green;color:white;border:0;box-shadow:2px 2px 3px #ccacac;transition-duration:0.3s;font-weight:600;'/>
-                </form>
-                <hr>
-                <ul>
-                    {}
-                </ul>
-                <hr>
-            </body>
-            </html>
-        """.format(uri_path, file_list_html).encode()
+        template = open('./config/index.tpl')
+        return template.read().format(uri_path, file_list_html).encode()
 
 
-def start_https_server(listening_port, basic_authentication_key, data_dir, certificate_file):
-    CustomBaseHTTPRequestHandler.basic_authentication_key = "Basic " + \
-        basic_authentication_key.decode("utf-8")
-    CustomBaseHTTPRequestHandler.data_dir = data_dir
+def start_https_server(listen_addr, listen_port, basic_auth_key,
+                       certificate_file, tpl_file, data_dir):
+    SimpleHTTPfsRequestHandler.basic_auth_key = "Basic " + \
+        basic_auth_key.decode("utf-8")
+    SimpleHTTPfsRequestHandler.tpl_file = tpl_file
+    SimpleHTTPfsRequestHandler.data_dir = data_dir
 
     https_server = http.server.HTTPServer(
-        ("0.0.0.0", listening_port), CustomBaseHTTPRequestHandler)
+        (listen_addr, listen_port), SimpleHTTPfsRequestHandler)
     if certificate_file:
         https_server.socket = ssl.wrap_socket(
             https_server.socket, certfile=certificate_file, server_side=True)
@@ -221,19 +205,26 @@ def start_https_server(listening_port, basic_authentication_key, data_dir, certi
 
 
 if __name__ == '__main__':
-    # TODO: add start path
-    # TODO: add fix for path traversal
-    # openssl req -new -x509 -keyout .config/https_upload/server.pem -out .config/https_upload/server.pem -days 365 -nodes -subj "/C=/ST=/O=/OU=/CN="
-    if len(sys.argv) < 4:
-        print(
-            "[-] USAGE: {} <PORT> <USERNAME:PASSWORD> <DATA_DIR> [CERTIFICATE FILE]".format(sys.argv[0]))
-        sys.exit(1)
+    # if len(sys.argv) < 1:
+    #     print("[-] USAGES: {} <CONFIG_PATH>".format(sys.argv[0]))
+    #     sys.exit(1)
 
-    listening_port = int(sys.argv[1])
-    basic_authentication_key = base64.b64encode(
-        sys.argv[2].encode("utf-8"))  # binary
-    data_dir = sys.argv[3]
-    certificate_file = sys.argv[4] if len(sys.argv) == 5 else False
-    print("[+] Staring server...")
+    # Read configuration.
+    config_path = "/etc/simple_httpfs/server.ini"
+    if len(sys.argv) > 1:  # The sys.argv[0] is this file.
+        config_path = sys.argv[1]
+    cf = configparser.ConfigParser()
+    cf.read(config_path)
+
+    listen_addr = cf.get("http.listen", "listen_addr")
+    listen_port = cf.getint("http.listen", "listen_port")
+    cert_file = cf.get("http.listen", "cert_file")
+    auth_basic = cf.get("http.auth", "auth_basic")
+    tpl_file = cf.get("fs.rendering", "tpl_file")
+    data_dir = cf.get("fs.data", "data_dir")
+
+    print("[+] Starting server...")
+    basic_auth_key = base64.b64encode(
+        auth_basic.encode("utf-8"))  # binary
     start_https_server(
-        listening_port, basic_authentication_key, data_dir, certificate_file)
+        listen_addr, listen_port, basic_auth_key, cert_file, tpl_file, data_dir)
