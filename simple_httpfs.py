@@ -8,6 +8,7 @@ import shutil
 import string
 import sys
 import time
+from typing import List
 import urllib
 
 import cgi
@@ -21,13 +22,25 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     data_dir = '.'
 
     # Replace server headers from "Server: BaseHTTP/0.6 Python/3.6.7"
-    server_version = "Microsoft-HTTPSERVER/2.0"  # replaces BaseHTTP/0.6
+    server_version = "SimpleHTTPFS/2"
     sys_version = ""  # replaces Python/3.6.7
 
     def is_authenticated(self):
-        authorization_header = self.headers["Authorization"]
+        if self.path == '/':
+            return True
 
-        if authorization_header != self.basic_auth_key:
+        basic_auth_key = ""
+        for authc in self.basic_authc_list:
+            # Request uri path regex matches
+            matched = re.match(authc["authc_uri"],
+                               self.path, re.M | re.I) != None
+            if matched:
+                basic_auth_key = "Basic " + authc["authc_info"]
+
+        authorization_header = self.headers["Authorization"]
+        if authorization_header != basic_auth_key:
+            self.log_message(
+                "Failure basic authentication. request authorization: '%s', path: '%s'", authorization_header, self.path)
             self.do_authentication()
             self.close_connection = True
             return False
@@ -49,7 +62,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         return self.do_get_index_page(False)
 
     def do_POST(self):
-        # self.log_message("do_post ...")
+        # self.log_message("do_post ...", self.path)
         if not self.is_authenticated():
             return self.do_GET()
 
@@ -77,14 +90,11 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         uri_path = re.split(r'\?|\#', self.path)[0]
-        # default_req_file_path = os.getcwd() + uri_path
         req_file_path = data_dir + uri_path
 
         if is_redirect:
             self.send_response(301)
-            schema = self.headers.get('X-Forwarded-Proto', "http://")
-            hostAndPort = self.headers.get('Host', "")
-            location = schema + hostAndPort + "/admin" + uri_path
+            location = self.get_request_base_uri() + uri_path
             self.log_message("Redirecting %s", location)
             self.send_header("Location", location)
             self.end_headers()  # the response to browser
@@ -147,48 +157,54 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
         return
 
+    def get_request_base_uri(self):
+        schema = self.headers.get('X-Forwarded-Proto', "http://")
+        hostAndPort = self.headers.get('Host', "localhost")
+        return schema + hostAndPort
+
     def render_html_directies(self, req_file_path, uri_path):
         self.log_message("Render html by uri: '%s' from directies: '%s'",
                          uri_path, req_file_path)
-
-        # TODO: change header path
         try:
             file_list = os.listdir(req_file_path)
         except os.error:
             self.send_error(404, "No permission to list directory")
             return ""
 
+        base_uri = self.get_request_base_uri()
+        # uri_path = uri_path = '' if self.path == '/' '' else self.path
         file_list_html = "<li><a target='_self' href='../'>../</a></li>\n"
         for file_name in file_list:
             full_file_name = req_file_path + "/" + file_name
-            file_href = file_display_name = file_name
+            file_href = base_uri + self.path + file_name
+            file_display_name = file_name
             file_size = os.path.getsize(full_file_name)
             file_mtime = os.path.getmtime(full_file_name)
             format_mtime = time.strftime(
-                "%Z %Y-%m-%d %H:%M:%S", time.localtime(file_mtime))
+                "%Z %z %Y-%m-%d %H:%M:%S", time.localtime(file_mtime))
 
-            if os.path.isdir(file_name):
+            if os.path.isdir(full_file_name):
                 file_display_name = file_name + "/"
                 file_href = file_href + "/"
-            if os.path.islink(file_name):
+            if os.path.islink(full_file_name):
                 file_display_name = file_name + "@"
 
+            # file_href = urllib.parse.quote(file_href)
             file_list_html = file_list_html + \
-                "<li><a target='_self' href=\"{}\">{}</a><span style='position:absolute;float:right;right:70%;'>{}<span><span style='position:absolute;float:right;right:-100%;'>{} B<span></li>\n".format(
-                    urllib.parse.quote(
-                        file_href), file_display_name, format_mtime, file_size
+                "<li><a target='_self' href=\"{}\">{}</a><span style='position:absolute;float:right;right:55%;'>{}<span><span style='position:absolute;float:right;right:-100%;'>{} B<span></li>\n".format(
+                    file_href, file_display_name, format_mtime, file_size
                 )
 
-        template = open('./config/index.tpl')
+        template = open(self.tpl_file)
         return template.read().format(uri_path, file_list_html).encode()
 
 
-def start_https_server(listen_addr, listen_port, basic_auth_key,
+def start_https_server(listen_addr, listen_port, server_version, basic_authc_list,
                        certificate_file, tpl_file, data_dir):
-    SimpleHTTPfsRequestHandler.basic_auth_key = "Basic " + \
-        basic_auth_key.decode("utf-8")
+    SimpleHTTPfsRequestHandler.server_version = server_version
     SimpleHTTPfsRequestHandler.tpl_file = tpl_file
     SimpleHTTPfsRequestHandler.data_dir = data_dir
+    SimpleHTTPfsRequestHandler.basic_authc_list = basic_authc_list
 
     https_server = http.server.HTTPServer(
         (listen_addr, listen_port), SimpleHTTPfsRequestHandler)
@@ -199,9 +215,19 @@ def start_https_server(listen_addr, listen_port, basic_auth_key,
     try:
         https_server.serve_forever()
     except KeyboardInterrupt:
-        print("\n[!] Keyboard interrupt received, exiting...")
+        print("\n[!] Keyboard interrupt received, exiting bye ...")
         https_server.server_close()
         sys.exit(0)
+
+
+def get_now_date():
+    return time.strftime("%Z %z %Y-%m-%d %H:%M:%S",
+                         time.localtime(time.time()))
+
+
+def to_basic_authc(item):
+    authcStr = cf.get("http.authc.basic", item)
+    return {"authc_uri": item, "authc_info": base64.b64encode(authcStr.encode("utf-8")).decode("utf-8")}
 
 
 if __name__ == '__main__':
@@ -216,15 +242,23 @@ if __name__ == '__main__':
     cf = configparser.ConfigParser()
     cf.read(config_path)
 
-    listen_addr = cf.get("http.listen", "listen_addr")
-    listen_port = cf.getint("http.listen", "listen_port")
-    cert_file = cf.get("http.listen", "cert_file")
-    auth_basic = cf.get("http.auth", "auth_basic")
+    listen_addr = cf.get("http.server", "listen_addr")
+    listen_port = cf.getint("http.server", "listen_port")
+    server_version = cf.get("http.server", "server_version")
+    cert_file = cf.get("http.server", "cert_file")
     tpl_file = cf.get("fs.rendering", "tpl_file")
     data_dir = cf.get("fs.data", "data_dir")
 
-    print("[+] Starting server...")
-    basic_auth_key = base64.b64encode(
-        auth_basic.encode("utf-8"))  # binary
+    basic_authc_keys = cf.options("http.authc.basic")
+    basic_authc_list = list(map(to_basic_authc, basic_authc_keys))
+    # print(basic_authc_list[0]["authc_uri"] + " => " + basic_authc_list[0]["authc_info"])
+
+    print("[{}] Starting simple HTTPFS server ...".format(get_now_date()))
     start_https_server(
-        listen_addr, listen_port, basic_auth_key, cert_file, tpl_file, data_dir)
+        listen_addr,
+        listen_port,
+        server_version,
+        basic_authc_list,
+        cert_file,
+        tpl_file,
+        data_dir)

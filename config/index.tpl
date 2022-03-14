@@ -1,7 +1,7 @@
  <!DOCTYPE html>
 <html>
 <head>
-    <title>Microsoft-HTTPSERVER/2.0</title>
+    <title>Index Files Listing</title>
 </head>
 <body>
     <h2>Index of: {}</h2>
