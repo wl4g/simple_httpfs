@@ -19,7 +19,7 @@ import configparser
 
 class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     tpl_file = '/etc/simple_httpfs/index.tpl'
-    data_dir = '.'
+    data_dir = os.getcwd()
 
     # Replace server headers from "Server: BaseHTTP/0.6 Python/3.6.7"
     server_version = "SimpleHTTPFS/2"
@@ -49,7 +49,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def do_authentication(self):
         self.send_response(401)
-        self.send_header("WWW-Authenticate", "Basic realm=\"MyRealm\"")
+        self.send_header("WWW-Authenticate", "Basic realm=HttpBasicRealm")
         self.send_header("Content-type", "text/html")
         self.end_headers()
 
