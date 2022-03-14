@@ -25,17 +25,22 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     server_version = "SimpleHTTPFS/2"
     sys_version = ""  # replaces Python/3.6.7
 
-    def is_authenticated(self):
-        if self.path == '/':
-            return True
+    def is_authenticated(self, permits):
+        uri_path = self.clean_path()
 
         basic_auth_key = ""
-        for authc in self.basic_authc_list:
-            # Request uri path regex matches
-            matched = re.match(authc["authc_uri"],
-                               self.path, re.M | re.I) != None
-            if matched:
-                basic_auth_key = "Basic " + authc["authc_info"]
+        for acl in self.acl_list:
+            # Matches request path with regex.
+            route_matched = re.match(acl["route_regex"],
+                                     uri_path, re.M | re.I) != None
+            if route_matched:
+                permits_matched = True
+                for p in permits.split(","):
+                    if acl["permits"].find(p) < 0:
+                        permits_matched = False
+                if permits_matched:
+                    basic_auth_key = "Basic " + acl["basic_auth"]
+                    break
 
         authorization_header = self.headers["Authorization"]
         if authorization_header != basic_auth_key:
@@ -54,17 +59,19 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_HEAD(self):
-        # self.log_message("do_head ...")
+        if not self.is_authenticated("r"):
+            return None
         return self.do_get_index_page(False)
 
     def do_GET(self):
-        # self.log_message("do_get ...")
+        if not self.is_authenticated("r"):
+            return None
         return self.do_get_index_page(False)
 
     def do_POST(self):
-        # self.log_message("do_post ...", self.path)
-        if not self.is_authenticated():
-            return self.do_GET()
+        if not self.is_authenticated("r,w"):
+            self.do_authentication()
+            return None
 
         post_form = cgi.FieldStorage(
             fp=self.rfile,
@@ -85,11 +92,30 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
         return self.do_get_index_page(True)
 
-    def do_get_index_page(self, is_redirect):
-        if not self.is_authenticated():
-            return
+    def clean_path(self):
+        # for example: http://example.com///abcd//1.jpg => /abcd/1.jpg
+        cleaned_path = ""
+        for part in self.path.split("/"):
+            if len(part) > 0 and part != "/":
+                cleaned_path += "/" + part
+        endPart = ""
+        if self.path.endswith("/"):
+            endPart = "/"
+        return cleaned_path + endPart
 
-        uri_path = re.split(r'\?|\#', self.path)[0]
+    def is_root_request(self):
+        self.clean_path()
+        if len(self.path) <= 1:
+            return True
+
+        # for example: http://example.com// => //
+        for part in self.path.split("/"):
+            if len(part) > 0 and part != "/":
+                return False
+        return True
+
+    def do_get_index_page(self, is_redirect):
+        uri_path = re.split(r'\?|\#', self.clean_path())[0]
         req_file_path = data_dir + uri_path
 
         if is_redirect:
@@ -98,7 +124,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             self.log_message("Redirecting %s", location)
             self.send_header("Location", location)
             self.end_headers()  # the response to browser
-            return
+            return None
 
         # Response files html
         if os.path.isdir(req_file_path):
@@ -111,7 +137,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(contents_html)))
             self.end_headers()
             self.wfile.write(contents_html)
-            return
+            return None
 
         # Response download or rendering file
         try:
@@ -153,9 +179,9 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                 request_file.close()
         except IOError:
             self.send_error(404, "Not found file")
-            return
+            return None
 
-        return
+        return None
 
     def get_request_base_uri(self):
         schema = self.headers.get('X-Forwarded-Proto', "http://")
@@ -199,12 +225,12 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         return template.read().format(uri_path, file_list_html).encode()
 
 
-def start_https_server(listen_addr, listen_port, server_version, basic_authc_list,
+def start_https_server(listen_addr, listen_port, server_version, acl_list,
                        certificate_file, tpl_file, data_dir):
     SimpleHTTPfsRequestHandler.server_version = server_version
     SimpleHTTPfsRequestHandler.tpl_file = tpl_file
     SimpleHTTPfsRequestHandler.data_dir = data_dir
-    SimpleHTTPfsRequestHandler.basic_authc_list = basic_authc_list
+    SimpleHTTPfsRequestHandler.acl_list = acl_list
 
     https_server = http.server.HTTPServer(
         (listen_addr, listen_port), SimpleHTTPfsRequestHandler)
@@ -225,9 +251,14 @@ def get_now_date():
                          time.localtime(time.time()))
 
 
-def to_basic_authc(item):
-    authcStr = cf.get("http.authc.basic", item)
-    return {"authc_uri": item, "authc_info": base64.b64encode(authcStr.encode("utf-8")).decode("utf-8")}
+def to_acl_info(item):
+    # for example: owner1_readwrite=admin1:123:rw:^/owner1/(.*)
+    value = cf.get("http.acl", item)
+    parts = value.split(":")
+    basic_auth = parts[0] + ":" + parts[1]
+    permits = parts[2]
+    route_regex = parts[3]
+    return {"basic_auth": base64.b64encode(basic_auth.encode("utf-8")).decode("utf-8"), "permits": permits, "route_regex": route_regex}
 
 
 if __name__ == '__main__':
@@ -249,16 +280,16 @@ if __name__ == '__main__':
     tpl_file = cf.get("fs.rendering", "tpl_file")
     data_dir = cf.get("fs.data", "data_dir")
 
-    basic_authc_keys = cf.options("http.authc.basic")
-    basic_authc_list = list(map(to_basic_authc, basic_authc_keys))
-    # print(basic_authc_list[0]["authc_uri"] + " => " + basic_authc_list[0]["authc_info"])
+    acl_routes = cf.options("http.acl")
+    acl_list = list(map(to_acl_info, acl_routes))
+    # print(acl_list[0]["route_regex"] + " => " + acl_list[0]["basic_auth"])
 
     print("[{}] Starting simple HTTPFS server ...".format(get_now_date()))
     start_https_server(
         listen_addr,
         listen_port,
         server_version,
-        basic_authc_list,
+        acl_list,
         cert_file,
         tpl_file,
         data_dir)
