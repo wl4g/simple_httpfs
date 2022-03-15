@@ -16,6 +16,8 @@ import http.server
 import ssl
 import configparser
 
+defaultConfigPath = "/etc/simplehttpfs/server.ini"
+defaultMimeTypes = "/etc/simplehttpfs/mime.types"
 defaultFormTpl = "/etc/simplehttpfs/form.tpl"
 defaultListingTpl = "/etc/simplehttpfs/index.tpl"
 defaultServerVersion = "SimpleHTTPFS/2"
@@ -327,12 +329,8 @@ def to_mime_info(item):
 
 
 if __name__ == '__main__':
-    # if len(sys.argv) < 1:
-    #     print("[-] USAGES: {} <CONFIG_PATH>".format(sys.argv[0]))
-    #     sys.exit(1)
-
     # Read configuration.
-    config_path = "/etc/simplehttpfs/server.ini"
+    config_path = defaultConfigPath
     if len(sys.argv) > 1:  # The sys.argv[0] is this file.
         config_path = sys.argv[1]
     cf = configparser.ConfigParser()
@@ -352,6 +350,7 @@ if __name__ == '__main__':
     # print(acl_list[0]["route_regex"] + " => " + acl_list[0]["basic_auth"])
 
     # mime types.
+    mime_types = mime_types = defaultMimeTypes if mime_types == None or mime_types == '' else mime_types
     mime_lines = open(mime_types, encoding="utf-8").readlines()
     mime_list = list(map(to_mime_info, mime_lines))
     mime_list = [i for i in mime_list if i != None]
