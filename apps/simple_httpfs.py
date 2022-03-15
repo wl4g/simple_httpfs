@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import encodings
 from fileinput import filename
 import os
 import re
@@ -72,23 +73,34 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     def is_authenticated(self, permits):
         uri_path = self.clean_path()
 
-        # Matching ACL realm
+        request_token = self.get_auth_token()
+        if request_token == None or request_token == '':
+            self.log_message(
+                "Failed to authentication. request auth is required! path: '%s'", self.path)
+            return False
+
+        decode_token = base64.b64decode(request_token).decode("utf-8")
+        username = decode_token.split(":")[0]
+
+        # for ACL
         basic_auth_key = ""
         for acl in self.acl_list:
-            # Matches request path with regex.
-            route_matched = re.match(acl["route_regex"],
-                                     uri_path, re.M | re.I) != None
-            if route_matched:
-                permits_matched = True
-                for p in permits.split(","):
-                    if acl["permits"].find(p) < 0:
-                        permits_matched = False
-                if permits_matched:
-                    basic_auth_key = "Basic " + acl["basic_auth"]
-                    break
+            # Matching request username.
+            if acl["username"] == username:
+                # Matching request path (regex).
+                route_matched = re.match(acl["route_regex"],
+                                        uri_path, re.M | re.I) != None
+                if route_matched:
+                    # Matching permits.
+                    permits_matched = True
+                    for p in permits.split(","):
+                        if acl["permits"].find(p) < 0:
+                            permits_matched = False
+                    if permits_matched:
+                        basic_auth_key = acl["basic_auth"]
+                        break
 
-        # Verifying auth token
-        request_token = self.get_auth_token()
+        # Matching authentication token
         if request_token == basic_auth_key:
             self.set_auth_token(basic_auth_key)
             return True
@@ -101,17 +113,17 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         # First get from basic header
         token = self.headers["Authorization"]
         if token != '' and token != None:
-            return token
-        else:
-            # Second get from cookie
-            cookies = self.headers.get('Cookie', '')
-            if cookies != '':
-                for cookie in cookies.split(";"):
-                    name = cookie.split("=")[0]
-                    value = cookie[len(self.auth_token_name)+1:]
-                    if name == self.auth_token_name:
-                        return value
-            return None
+            # remove prefix 'Basic '
+            return token.split(" ")[1]
+        # Second get from cookie
+        cookies = self.headers.get('Cookie', '')
+        if cookies != '':
+            for cookie in cookies.split(";"):
+                name = cookie.split("=")[0]
+                value = cookie[len(self.auth_token_name)+1:]
+                if name == self.auth_token_name:
+                    return value
+        return None
 
     def set_auth_token(self, token):
         schema = self.headers.get('X-Forwarded-Proto', "http://").lower()
@@ -124,7 +136,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                                                                              domain,
                                                                              expires,
                                                                              secure)
-        # self.send_header("Set-Cookie", cookie)
+        # Notice: 'self.send_header("Set-Cookie", cookie)' cannot be called directly, because it must be called
+        # after 'self.send_response(200)', otherwise it will cause an error in the splicing http response spec.
         self.current_authenticated_token_cookie = cookie
 
     def send_unauthentication(self):
@@ -311,10 +324,11 @@ def to_acl_info(item):
     # for example: owner1_readwrite=admin1:123:rw:^/owner1/(.*)
     value = cf.get("http.acl", item)
     parts = value.split(":")
-    basic_auth = parts[0] + ":" + parts[1]
+    username = parts[0]
+    basic_auth = username + ":" + parts[1]
     permits = parts[2]
     route_regex = parts[3]
-    return {"basic_auth": base64.b64encode(basic_auth.encode("utf-8")).decode("utf-8"), "permits": permits, "route_regex": route_regex}
+    return {"basic_auth": base64.b64encode(basic_auth.encode("utf-8")).decode("utf-8"), "username": username, "permits": permits, "route_regex": route_regex}
 
 
 def to_mime_info(item):
