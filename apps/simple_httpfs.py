@@ -16,62 +16,36 @@ import http.server
 import ssl
 import configparser
 
+defaultFormTpl = "/etc/simplehttpfs/form.tpl"
+defaultListingTpl = "/etc/simplehttpfs/index.tpl"
+defaultServerVersion = "SimpleHTTPFS/2"
+defaultAuthTokenName = "__tk"
+
 
 class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
-    form_tpl = '/etc/simplehttpfs/form.tpl'
-    listing_tpl = '/etc/simplehttpfs/index.tpl'
+    mime_list = []
+    form_tpl = defaultFormTpl
     data_dir = os.getcwd()
+    listing_tpl = defaultListingTpl
+    auth_token_name = defaultAuthTokenName
 
     # Replace server headers from "Server: BaseHTTP/0.6 Python/3.6.7"
-    server_version = "SimpleHTTPFS/2"
+    server_version = defaultServerVersion
     sys_version = ""  # replaces Python/3.6.7
-
-    def is_authenticated(self, permits):
-        uri_path = self.clean_path()
-
-        basic_auth_key = ""
-        for acl in self.acl_list:
-            # Matches request path with regex.
-            route_matched = re.match(acl["route_regex"],
-                                     uri_path, re.M | re.I) != None
-            if route_matched:
-                permits_matched = True
-                for p in permits.split(","):
-                    if acl["permits"].find(p) < 0:
-                        permits_matched = False
-                if permits_matched:
-                    basic_auth_key = "Basic " + acl["basic_auth"]
-                    break
-
-        authorization_header = self.headers["Authorization"]
-        if authorization_header != basic_auth_key:
-            self.log_message(
-                "Failure basic authentication. request authorization: '%s', path: '%s'", authorization_header, self.path)
-            return False
-
-        return True
-
-    def do_authentication(self):
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", "Basic realm=HttpBasicRealm")
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.close_connection = True
-        return False
 
     def do_HEAD(self):
         if not self.is_authenticated("r"):
-            return self.do_authentication()
+            return self.send_unauthentication()
         return self.do_get_index_page(False)
 
     def do_GET(self):
         if not self.is_authenticated("r"):
-            return self.do_authentication()
+            return self.send_unauthentication()
         return self.do_get_index_page(False)
 
     def do_POST(self):
         if not self.is_authenticated("r,w"):
-            return self.do_authentication()
+            return self.send_unauthentication()
 
         post_form = cgi.FieldStorage(
             fp=self.rfile,
@@ -91,6 +65,62 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             shutil.copyfileobj(post_form["file"].file, file_object)
 
         return self.do_get_index_page(True)
+
+    def is_authenticated(self, permits):
+        uri_path = self.clean_path()
+
+        # Matching ACL realm
+        basic_auth_key = ""
+        for acl in self.acl_list:
+            # Matches request path with regex.
+            route_matched = re.match(acl["route_regex"],
+                                     uri_path, re.M | re.I) != None
+            if route_matched:
+                permits_matched = True
+                for p in permits.split(","):
+                    if acl["permits"].find(p) < 0:
+                        permits_matched = False
+                if permits_matched:
+                    basic_auth_key = "Basic " + acl["basic_auth"]
+                    break
+
+        # Verifying auth token
+        request_token = self.get_auth_token()
+        if request_token == basic_auth_key:
+            self.set_auth_token(basic_auth_key)
+            return True
+        else:
+            self.log_message(
+                "Failed to authentication. request auth: '%s', path: '%s'", request_token, self.path)
+            return False
+
+    def get_auth_token(self):
+        # First get from basic header
+        token = self.headers["Authorization"]
+        if token != '':
+            return token
+        else:
+            # Second get from cookie
+            cookies = self.headers.get('Cookie', '')
+            if cookies != '':
+                for cookie in cookies.split(";"):
+                    name = cookie.split("=")[0]
+                    value = cookie.split("=")[1]
+                    if name == self.auth_token_name:
+                        return value
+            return None
+
+    def set_auth_token(self, token):
+        cookies = self.auth_token_name + "=" + token
+        #self.send_header("Cookie", cookies)
+
+    def send_unauthentication(self):
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", "Basic realm=HttpBasicRealm")
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.close_connection = True
+        return False
 
     def clean_path(self):
         # for example: http://example.com///abcd//1.jpg => /abcd/1.jpg
@@ -150,27 +180,16 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                              str(os.stat(req_file_path).st_size))
             self.send_header(
                 "Last-Modified", self.date_time_string(os.stat(req_file_path).st_mtime))
-            if req_file_path.endswith(('.gif', '.jpg', '.png', '.jpeg', '.bmp', '.webp', '.ico')):
-                self.send_header("Content-type", "image/jpeg")
-            elif req_file_path.endswith(('.mp4', '.w4a', '.w4v')):
-                self.send_header("Content-type", "video/mpeg4")
-            elif req_file_path.endswith(('.wov', '.w4a')):
-                self.send_header("Content-type", "video/quicktime")
-            elif req_file_path.endswith(('.avi')):
-                self.send_header("Content-type", "video/avi")
-            elif req_file_path.endswith(('.flv')):
-                self.send_header("Content-type", "video/x-flv")
-            elif req_file_path.endswith(('.wma')):
-                self.send_header("Content-type", "video/wma")
-            elif req_file_path.endswith(('.vob')):
-                self.send_header("Content-type", "video/vob")
-            elif req_file_path.endswith(('.mpv', 'mpeg')):
-                self.send_header("Content-type", "video/mpg")
-            elif req_file_path.endswith(('.3gp')):
-                self.send_header("Content-type", "video/3gpp")
-            elif req_file_path.endswith(('.mp3')):
-                self.send_header("Content-type", "audio/mp3")
-            else:
+
+            is_find_media = False
+            file_ext = req_file_path[req_file_path.rindex(".")+1:]
+            for media in self.mime_list:
+                for suffix in media["suffixs"]:
+                    if suffix == file_ext:
+                        self.send_header("Content-type", media["media"])
+                        is_find_media = True
+                        break
+            if not is_find_media:
                 self.send_header("Content-type", "application/octet-stream")
             self.end_headers()
 
@@ -239,16 +258,20 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 def start_https_server(listen_addr,
                        listen_port,
                        server_version,
-                       acl_list,
                        certificate_file,
+                       mime_list,
                        form_tpl,
                        listing_tpl,
+                       auth_token_name,
+                       acl_list,
                        data_dir):
     SimpleHTTPfsRequestHandler.server_version = server_version
+    SimpleHTTPfsRequestHandler.mime_list = mime_list
     SimpleHTTPfsRequestHandler.form_tpl = form_tpl
     SimpleHTTPfsRequestHandler.listing_tpl = listing_tpl
-    SimpleHTTPfsRequestHandler.data_dir = data_dir
+    SimpleHTTPfsRequestHandler.auth_token_name = auth_token_name
     SimpleHTTPfsRequestHandler.acl_list = acl_list
+    SimpleHTTPfsRequestHandler.data_dir = data_dir
 
     https_server = http.server.HTTPServer(
         (listen_addr, listen_port), SimpleHTTPfsRequestHandler)
@@ -279,6 +302,17 @@ def to_acl_info(item):
     return {"basic_auth": base64.b64encode(basic_auth.encode("utf-8")).decode("utf-8"), "permits": permits, "route_regex": route_regex}
 
 
+def to_mime_info(item):
+    if len(item) > 3:
+        parts = item.replace('\n', '').split("=")
+        suffixs = []
+        for suffix in parts[1].split(","):
+            if len(suffix) > 0:
+                suffixs.append(suffix)
+        return {"suffixs": suffixs, "media": parts[0]}
+    return None
+
+
 if __name__ == '__main__':
     # if len(sys.argv) < 1:
     #     print("[-] USAGES: {} <CONFIG_PATH>".format(sys.argv[0]))
@@ -295,21 +329,29 @@ if __name__ == '__main__':
     listen_port = cf.getint("http.server", "listen_port")
     server_version = cf.get("http.server", "server_version")
     cert_file = cf.get("http.server", "cert_file")
+    auth_token_name = cf.get("http.auth", "auth_token_name")
+    acl_routes = cf.options("http.acl")
+    acl_list = list(map(to_acl_info, acl_routes))
+    mime_types = cf.get("fs.rendering", "mime_types")
     form_tpl = cf.get("fs.rendering", "form_tpl")
     listing_tpl = cf.get("fs.rendering", "listing_tpl")
     data_dir = cf.get("fs.data", "data_dir")
-
-    acl_routes = cf.options("http.acl")
-    acl_list = list(map(to_acl_info, acl_routes))
     # print(acl_list[0]["route_regex"] + " => " + acl_list[0]["basic_auth"])
+
+    # mime types.
+    mime_lines = open(mime_types, encoding="utf-8").readlines()
+    mime_list = list(map(to_mime_info, mime_lines))
+    mime_list = [i for i in mime_list if i != None]
 
     print("[{}] Starting simple HTTPFS server ...".format(get_now_date()))
     start_https_server(
         listen_addr,
         listen_port,
         server_version,
-        acl_list,
         cert_file,
+        mime_list,
         form_tpl,
         listing_tpl,
+        auth_token_name,
+        acl_list,
         data_dir)
