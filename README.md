@@ -60,7 +60,7 @@ sudo systemctl restart nginx
 - Startup
 
 ```bash
-git clone git@gitee.com:wl4g/simple_httpfs.git
+git clone https://gitee.com/wl4g/simple_httpfs.git
 cd simple_httpfs/
 
 ./apps/simple_httpfs.py config/server.ini
