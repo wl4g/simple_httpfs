@@ -89,3 +89,8 @@ cd simple_httpfs/
 |[fs.data].data_dir | string | &lt;work_dir&gt; | /mnt/disk1/httpfs | The directory where the actual files of HttpFS. |
 
 - If you need to use https, you can use openssl self-signed certificate: `openssl req -new -x509 -keyout ./httpfs_server.pem -out ./httpfs_server.pem -days 365 -nodes -subj "/C=/ST=/O=/OU=/CN="`
+
+- Notice: The matching priority of multiple rules in the same username is in order, for example:
+
+  - `my_root_files=admin:123:r:^/(\S+)\.(.+)$` &nbsp;&nbsp;&nbsp;&nbsp; (matched)
+  - `my_root=admin:123:r:^/$` &nbsp;&nbsp;&nbsp;&nbsp;  (ignore)
