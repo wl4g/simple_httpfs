@@ -5,7 +5,6 @@
 </head>
 <body>
     <h2>Index of: {}</h2>
-        <!-- multipart from(required permission) -->
         {}
     <hr/>
     <ul>

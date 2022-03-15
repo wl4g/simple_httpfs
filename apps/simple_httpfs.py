@@ -28,6 +28,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     data_dir = os.getcwd()
     listing_tpl = defaultListingTpl
     auth_token_name = defaultAuthTokenName
+    current_authenticated_token_cookie = ""
 
     # Replace server headers from "Server: BaseHTTP/0.6 Python/3.6.7"
     server_version = defaultServerVersion
@@ -97,7 +98,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     def get_auth_token(self):
         # First get from basic header
         token = self.headers["Authorization"]
-        if token != '':
+        if token != '' and token != None:
             return token
         else:
             # Second get from cookie
@@ -105,14 +106,24 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             if cookies != '':
                 for cookie in cookies.split(";"):
                     name = cookie.split("=")[0]
-                    value = cookie.split("=")[1]
+                    value = cookie[len(self.auth_token_name)+1:]
                     if name == self.auth_token_name:
                         return value
             return None
 
     def set_auth_token(self, token):
-        cookies = self.auth_token_name + "=" + token
-        #self.send_header("Cookie", cookies)
+        schema = self.headers.get('X-Forwarded-Proto', "http://").lower()
+        secure = secure = "" if schema.startswith("http") else "secure"
+        domain = self.headers.get('Host', "localhost")
+        # expires = self.date_time_string(time.time())
+        expires = "Tue, 15 Mar 2023 14:40:46 -0000"
+        cookie = "{}={}; domain={}; path=/; expires={}; {}; HttpOnly".format(self.auth_token_name,
+                                                                             token,
+                                                                             domain,
+                                                                             expires,
+                                                                             secure)
+        # self.send_header("Set-Cookie", cookie)
+        self.current_authenticated_token_cookie = cookie
 
     def send_unauthentication(self):
         self.send_response(401)
@@ -165,8 +176,10 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             # self.log_message("Render html:\n%s", contents_html)
 
             self.send_response(200)
-            self.send_header("Content-type", "text/html")
+            # self.send_header("Content-type", "text/html")
             self.send_header("Content-Length", str(len(contents_html)))
+            self.send_header(
+                "Set-Cookie", self.current_authenticated_token_cookie)
             self.end_headers()
             self.wfile.write(contents_html)
             return None
