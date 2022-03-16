@@ -245,9 +245,9 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         return None
 
     def get_request_base_uri(self):
-        schema = self.headers.get('X-Forwarded-Proto', "http://")
+        schema = self.headers.get('X-Forwarded-Proto', "http")
         hostAndPort = self.headers.get('Host', "localhost")
-        return schema + hostAndPort
+        return schema + "://" + hostAndPort
 
     def render_html_directies(self,
                               req_file_path,
