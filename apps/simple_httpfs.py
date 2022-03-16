@@ -222,10 +222,10 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                 "Last-Modified", self.date_time_string(os.stat(req_file_path).st_mtime))
 
             is_find_media = False
-            file_ext = req_file_path[req_file_path.rindex(".")+1:]
+            file_ext = req_file_path[req_file_path.rindex(".")+1:].lower()
             for media in self.mime_list:
                 for suffix in media["suffixs"]:
-                    if suffix == file_ext:
+                    if suffix.lower() == file_ext:
                         self.send_header("Content-type", media["media"])
                         is_find_media = True
                         break
