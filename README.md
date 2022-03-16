@@ -63,7 +63,11 @@ sudo systemctl restart nginx
 git clone https://gitee.com/wl4g/simple_httpfs.git
 cd simple_httpfs/
 
+# Run
 ./apps/simple_httpfs.py config/server.ini
+
+# Build & package
+make
 ```
 
 - Browser access
