@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 import base64
-import encodings
+import datetime
 from fileinput import filename
+import json
 import os
 import re
 import shutil
@@ -43,6 +44,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         return self.do_get_index_page(False)
 
     def do_GET(self):
+        if self.is_logout_request():
+            return self.send_unauthentication()
         if not self.is_authenticated("r"):
             return self.send_unauthentication()
         return self.do_get_index_page(False)
@@ -70,7 +73,11 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
         return self.do_get_index_page(True)
 
-    def is_authenticated(self, permits):
+    def is_logout_request(self):
+        uri_path = self.clean_path()
+        return uri_path == "/logout"
+
+    def is_authenticated(self, permit):
         uri_path = self.clean_path()
 
         request_token = self.get_auth_token()
@@ -82,32 +89,33 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         decode_token = base64.b64decode(request_token).decode("utf-8")
         username = decode_token.split(":")[0]
 
-        # for ACL
-        basic_auth_key = ""
-        for acl in self.acl_list:
-            # Matching request username.
-            if acl["username"] == username:
-                # Matching request path (regex).
-                route_matched = re.match(acl["route_regex"],
-                                         uri_path, re.M | re.I) != None
-                if route_matched:
-                    # Matching permits.
-                    permits_matched = True
-                    for p in permits.split(","):
-                        if acl["permits"].find(p) < 0:
-                            permits_matched = False
-                    if permits_matched:
-                        basic_auth_key = acl["basic_auth"]
-                        break
+        # Gets auth key by ACL
+        auth_key = self.match_auth_key(username, uri_path, permit)
 
         # Matching authentication token
-        if request_token == basic_auth_key:
-            self.set_auth_token(basic_auth_key)
+        if request_token == auth_key:
+            self.set_auth_token(auth_key, 3600)
             return True
         else:
             self.log_message(
                 "Failed to authentication. request auth: '%s', path: '%s'", request_token, self.path)
             return False
+
+    def match_auth_key(self, username, uri_path, permit):
+        for acl in self.acl_list:
+            # Matching request username.
+            if acl["username"] == username:
+                # Matching request path (regex).
+                for rule in acl["rules"]:
+                    if re.match(rule["path"], uri_path, re.M | re.I) != None:
+                        # Matching permits.
+                        permit_matched = True
+                        for p in permit.split(","):
+                            if rule["permit"].find(p) < 0:
+                                permit_matched = False
+                        if permit_matched:
+                            return acl["auth"]
+        return None
 
     def get_auth_token(self):
         # First get from basic header
@@ -125,12 +133,13 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                     return value
         return None
 
-    def set_auth_token(self, token):
+    def set_auth_token(self, token, deltaSeconds):
         schema = self.headers.get('X-Forwarded-Proto', "http://").lower()
         secure = secure = "" if schema.startswith("http") else "secure"
         domain = self.headers.get('Host', "localhost")
-        # expires = self.date_time_string(time.time())
-        expires = "Tue, 15 Mar 2023 14:40:46 -0000"
+        # for example: "Tue, 15 Mar 2023 14:40:46 -0000"
+        expiration = datetime.datetime.now() + datetime.timedelta(seconds=deltaSeconds)
+        expires = expiration.strftime("%a, %d-%b-%Y %H:%M:%S PST")
         cookie = "{}={}; domain={}; path=/; expires={}; {}; HttpOnly".format(self.auth_token_name,
                                                                              token,
                                                                              domain,
@@ -144,6 +153,9 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(401)
         self.send_header("WWW-Authenticate", "Basic realm=HttpBasicRealm")
         self.send_header("Content-type", "text/html")
+        # Cleanup auth info.
+        self.set_auth_token("", -1)
+        self.send_header("Set-Cookie", self.current_authenticated_token_cookie)
         self.end_headers()
         self.close_connection = True
         return False
@@ -321,14 +333,13 @@ def get_now_date():
 
 
 def to_acl_info(item):
-    # for example: owner1_readwrite=admin1:123:rw:^/owner1/(.*)
-    value = cf.get("http.acl", item)
-    parts = value.split(":")
-    username = parts[0]
-    basic_auth = username + ":" + parts[1]
-    permits = parts[2]
-    route_regex = parts[3]
-    return {"basic_auth": base64.b64encode(basic_auth.encode("utf-8")).decode("utf-8"), "username": username, "permits": permits, "route_regex": route_regex}
+    username = item
+    acl = json.loads(cf.get("http.acl", username))
+    auth = username + ":" + acl["password"]
+    auth = base64.b64encode(auth.encode("utf-8")).decode("utf-8")
+    acl["auth"] = auth
+    acl["username"] = username
+    return acl
 
 
 def to_mime_info(item):
@@ -360,13 +371,13 @@ default config load for: " + defaultConfigPath)
     server_version = cf.get("http.server", "server_version")
     cert_file = cf.get("http.server", "cert_file")
     auth_token_name = cf.get("http.auth", "auth_token_name")
-    acl_routes = cf.options("http.acl")
-    acl_list = list(map(to_acl_info, acl_routes))
+    acl_rules = cf.options("http.acl")
+    acl_list = list(map(to_acl_info, acl_rules))
     mime_types = cf.get("fs.rendering", "mime_types")
     form_tpl = cf.get("fs.rendering", "form_tpl")
     listing_tpl = cf.get("fs.rendering", "listing_tpl")
     data_dir = cf.get("fs.data", "data_dir")
-    # print(acl_list[0]["route_regex"] + " => " + acl_list[0]["basic_auth"])
+    # print(acl_list[0]["auth"] + " => " + acl_list[0]["auth"])
 
     # mime types.
     mime_types = mime_types = defaultMimeTypes if mime_types == None or mime_types == '' else mime_types
