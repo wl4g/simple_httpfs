@@ -87,14 +87,9 @@ make
 |[http.server].listen_port | int | 28001 | 8888 | Listening http server sock port. |
 |[http.server].server_version | string | Google-SimpleHttpFS/2.0 | Microsoft-SimpleHttpFS/2.0 | http server information. |
 |[http.server].cert_file | string | nil | /etc/simple_httpfs/server.pem | https tls certificate file path. |
-|[http.acl].&lt;rule_name&gt;=&lt;username&gt;:&lt;password&gt;&lt;permits&gt;:&lt;regex_uri&gt; | string | &lt;required&gt; | `dir1=admin1:123:rw:^/dir1/(.*)` | Access authentication and authorization configuration, the example shows: when the request meets regex "`^/dir1/(.*)`", basic authentication is required to access of permits `r` and `w`, the username and password are: "`admin1:123`". Tips: If page there is not '`w`' permission in a path, the upload file button will not be display. |
+|[http.acl].&lt;username&gt;=&lt;acl_rule_json&gt; | string | &lt;required&gt; | `admin={"password":"123","rules":[{"path":"^/(.*)","permit": "rw"}]}` | Access controller list configuration, the example indicates that the user `user1` is allowed to request resources that satisfy the path `^/dir1/(.*)` and the permissions are `r` and `w`, **Tips**: only when it has the 'w' permission The upload file button will appear. More example see: [config/server.ini](config/server.ini)|
 |[fs.rendering].mime_types | string | /etc/simple_httpfs/mime_types | ./config/index.tpl | HttpFS rendering template file. |
 |[fs.rendering].tpl_file | string | /etc/simple_httpfs/index.tpl | ./config/index.tpl | HttpFS rendering template file. |
 |[fs.data].data_dir | string | &lt;work_dir&gt; | /mnt/disk1/httpfs | The directory where the actual files of HttpFS. |
 
 - If you need to use https, you can use openssl self-signed certificate: `openssl req -new -x509 -keyout ./httpfs_server.pem -out ./httpfs_server.pem -days 365 -nodes -subj "/C=/ST=/O=/OU=/CN="`
-
-- Notice: The matching priority of multiple rules in the same username is in order, for example:
-
-  - `my_root_files=admin:123:r:^/(\S+)\.(.+)$` &nbsp;&nbsp;&nbsp;&nbsp; (matched)
-  - `my_root=admin:123:r:^/$` &nbsp;&nbsp;&nbsp;&nbsp;  (ignore)
