@@ -349,9 +349,9 @@ if __name__ == '__main__':
         config_path = sys.argv[1]
     # Check config existing.
     if not os.path.exists(config_path):
-        print("Bad configuration!\nUsage for example: ./simple_httpfs ./config/server.ini, \
-            default config load for: " + defaultConfigPath)
-        os.exit(1)
+        print("Bad configuration!\nUsage example: ./simple_httpfs ./config/server.ini, The \
+default config load for: " + defaultConfigPath)
+        sys.exit(1)
     cf = configparser.ConfigParser()
     cf.read(config_path)
 
