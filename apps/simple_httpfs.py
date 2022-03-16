@@ -89,7 +89,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             if acl["username"] == username:
                 # Matching request path (regex).
                 route_matched = re.match(acl["route_regex"],
-                                        uri_path, re.M | re.I) != None
+                                         uri_path, re.M | re.I) != None
                 if route_matched:
                     # Matching permits.
                     permits_matched = True
@@ -343,10 +343,15 @@ def to_mime_info(item):
 
 
 if __name__ == '__main__':
-    # Read configuration.
+    # Parse configuration.
     config_path = defaultConfigPath
     if len(sys.argv) > 1:  # The sys.argv[0] is this file.
         config_path = sys.argv[1]
+    # Check config existing.
+    if not os.path.exists(config_path):
+        print("Bad configuration!\nUsage for example: ./simple_httpfs ./config/server.ini, \
+            default config load for: " + defaultConfigPath)
+        os.exit(1)
     cf = configparser.ConfigParser()
     cf.read(config_path)
 

@@ -11,7 +11,11 @@
 .mtj.tmp/
 _output/
 
-# Package Files #
+# Python assets.
+__pycache__/
+*.pyc
+
+# Package Files
 *.jar
 *.war
 *.nar
