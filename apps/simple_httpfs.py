@@ -197,13 +197,13 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
         # Response files html
         if os.path.isdir(req_file_path):
-            contents_html = self. render_html_directies(
+            contents_html = self.render_html_directies(
                 req_file_path,
                 uri_path)
             # self.log_message("Render html:\n%s", contents_html)
 
             self.send_response(200)
-            # self.send_header("Content-type", "text/html")
+            self.send_header("Content-type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(contents_html)))
             self.send_header(
                 "Set-Cookie", self.current_authenticated_token_cookie)
@@ -292,7 +292,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             for line in form_lines:
                 form_content += line
 
-        return listing_tpl.read().format(uri_path, form_content, listing_html).encode()
+        return listing_tpl.read().format(uri_path, form_content, listing_html).encode("utf-8")
 
 
 def start_https_server(listen_addr,
