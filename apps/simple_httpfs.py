@@ -18,7 +18,7 @@ import ssl
 import configparser
 
 __version__ = "v" + \
-    time.strftime("%Z%Y%m%dT%H%M%S", time.localtime(time.time()))
+    time.strftime("%Y%m%dT%H%M%S%Z", time.localtime(time.time()))
 defaultConfigPath = "/etc/simplehttpfs/server.ini"
 defaultMimeTypes = "/etc/simplehttpfs/mime.types"
 defaultFormTpl = "/etc/simplehttpfs/form.tpl"
