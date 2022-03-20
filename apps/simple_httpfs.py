@@ -353,13 +353,6 @@ def to_mime_info(item):
     return None
 
 
-def to_absolute_path(path):
-    if not path.startswith("/"):  # Relative path?
-        # The absolute path of the main execution file.
-        return os.path.dirname(os.path.abspath(__file__)) + "/../" + path
-    return path
-
-
 if __name__ == '__main__':
     # Parse configuration.
     config_path = defaultConfigPath
@@ -385,10 +378,10 @@ default config load for: " + defaultConfigPath)
     auth_token_name = cf.get("http.auth", "auth_token_name")
     acl_rules = cf.options("http.acl")
     acl_list = list(map(to_acl_info, acl_rules))
-    mime_types = to_absolute_path(cf.get("fs.rendering", "mime_types"))
-    form_tpl = to_absolute_path(cf.get("fs.rendering", "form_tpl"))
-    listing_tpl = to_absolute_path(cf.get("fs.rendering", "listing_tpl"))
-    data_dir = to_absolute_path(cf.get("fs.data", "data_dir"))
+    mime_types = cf.get("fs.rendering", "mime_types")
+    form_tpl = cf.get("fs.rendering", "form_tpl")
+    listing_tpl = cf.get("fs.rendering", "listing_tpl")
+    data_dir = cf.get("fs.data", "data_dir"))
     # print(acl_list[0]["auth"] + " => " + acl_list[0]["auth"])
 
     # mime types.
