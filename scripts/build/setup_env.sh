@@ -19,14 +19,15 @@ set -e
 
 function usages() {
     echo "Usage: ./$(basename $0) [OPTIONS] [arg1] [arg2] ...
-      GET,get                      Gets environments.
-              --OS,OS              Gets local platform OS name.
-              --ARCH,ARCH          Gets local platform ARCH name."
+      GET,get                   Gets environments.
+              --OS              Gets local platform OS name.
+              --ARCH            Gets local platform ARCH name.
+              --VERSION         Gets that project version based git commit."
 }
 
 function get_env() {
     case $1 in
-        --OS|OS)
+        --OS)
             LOCAL_OS=$(uname)
             # Pass environment set target operating-system to build system
             if [[ $LOCAL_OS == Linux ]]; then
@@ -41,7 +42,7 @@ function get_env() {
                 exit 1
             fi
         ;;
-        --ARCH|ARCH)
+        --ARCH)
             LOCAL_ARCH=$(uname -m)
             # Pass environment set target architecture to build system
             if [[ ${LOCAL_ARCH} == x86_64 ]]; then
@@ -63,6 +64,16 @@ function get_env() {
                 echo ""
                 exit 1
             fi
+        ;;
+        --VERSION)
+            branch=$(git branch | grep '\*')
+            commit=$(commitId=$(git log -n1 --format=format:"%H"); echo ${commitId:0:8})
+            if [[ "$branch" =~ "HEAD" ]]; then
+              branch=$(echo "$branch" | sed -E 's/\(|\)//g' | awk -F ' ' '{print $5}')
+            else
+              branch=$(echo "$branch" | awk -F ' ' '{print $2}')
+            fi
+            echo "$branch-$commit-$(date +%Y%m%d%H%M%S)"
         ;;
         *)
             usages

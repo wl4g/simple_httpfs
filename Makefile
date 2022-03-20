@@ -19,6 +19,7 @@ SHELL := /bin/bash
 TARGET_OS=$(shell ./scripts/build/setup_env.sh get --OS)
 TARGET_ARCH=$(shell ./scripts/build/setup_env.sh get --ARCH)
 OUT_DIR="./_output"
+VERSION=$(shell ./scripts/build/setup_env.sh get --VERSION)
 
 all: build package
 
@@ -33,8 +34,7 @@ package: ## build to target executable package.
 		--distpath $(OUT_DIR)/bin/ \
 		--specpath $(OUT_DIR)/spec --clean --log-level INFO \
 		--noconfirm \
-		--name simplehttpfs_$(TARGET_OS)_$(TARGET_ARCH) \
-		--version-file ./apps/__version__.py \
+		--name simplehttpfs_$(VERSION)_$(TARGET_OS)_$(TARGET_ARCH) \
 		-F ./apps/simple_httpfs.py
 
 clean: ## clean old build assets.
@@ -49,6 +49,8 @@ clean: ## clean old build assets.
 	-rm -rf ../templates_module
 	-rm -rf .cache
 	-rm -rf __pycache__
+	-rm -rf */__pycache__
+	-rm -rf */*/__pycache__
 
 help: ## print this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
