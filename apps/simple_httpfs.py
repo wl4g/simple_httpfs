@@ -356,8 +356,7 @@ def to_mime_info(item):
 def to_absolute_path(path):
     if not path.startswith("/"):  # Relative path?
         # The absolute path of the main execution file.
-        # see:https://www.cnblogs.com/chengd/p/7100782.html
-        return sys.path[0] + "/../" + path
+        return os.path.dirname(os.path.abspath(__file__)) + "/../" + path
     return path
 
 
