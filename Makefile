@@ -21,7 +21,7 @@ TARGET_ARCH=$(shell ./scripts/build/setup_env.sh get --ARCH)
 OUT_DIR="./_output"
 VERSION=$(shell ./scripts/build/setup_env.sh get --VERSION)
 
-all: build package
+all: clean build package
 
 build: ## install & build.
 	@echo "Building assets ..."
