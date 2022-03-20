@@ -363,7 +363,11 @@ if __name__ == '__main__':
         print("Bad configuration!\nUsage example: ./simple_httpfs ./config/server.ini, The \
 default config load for: " + defaultConfigPath)
         sys.exit(1)
-    cf = configparser.ConfigParser()
+
+    # [BUGFIX]: The special character '%' cannot be used, otherwise an 
+    # error of 'ConfigParser.InterpolationSyntaxError: ‘%’ must be followed ...' will be reported
+    # see:https://blog.csdn.net/s740556472/article/details/82889758
+    cf = configparser.RawConfigParser()
     cf.read(config_path)
 
     listen_addr = cf.get("http.server", "listen_addr")
