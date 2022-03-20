@@ -34,6 +34,7 @@ package: ## build to target executable package.
 		--specpath $(OUT_DIR)/spec --clean --log-level INFO \
 		--noconfirm \
 		--name simplehttpfs_$(TARGET_OS)_$(TARGET_ARCH) \
+		--version-file ./apps/__version__.py \
 		-F ./apps/simple_httpfs.py
 
 clean: ## clean old build assets.
@@ -47,6 +48,7 @@ clean: ## clean old build assets.
 	-rm -rf src/*.egg-info
 	-rm -rf ../templates_module
 	-rm -rf .cache
+	-rm -rf __pycache__
 
 help: ## print this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

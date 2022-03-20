@@ -7,7 +7,6 @@ import json
 import os
 import re
 import shutil
-import string
 import sys
 import time
 from typing import List
@@ -18,6 +17,8 @@ import http.server
 import ssl
 import configparser
 
+__version__ = "v" + \
+    time.strftime("%Z%Y%m%dT%H%M%S", time.localtime(time.time()))
 defaultConfigPath = "/etc/simplehttpfs/server.ini"
 defaultMimeTypes = "/etc/simplehttpfs/mime.types"
 defaultFormTpl = "/etc/simplehttpfs/form.tpl"
@@ -354,6 +355,10 @@ def to_mime_info(item):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 2 and (sys.argv[1] == "version" or sys.argv[1] == "--version"):
+        print("Simple HttpFS " + __version__)
+        sys.exit(1)
+
     # Parse configuration.
     config_path = defaultConfigPath
     if len(sys.argv) > 1:  # The sys.argv[0] is this file.
@@ -361,7 +366,7 @@ if __name__ == '__main__':
 
     # Check config existing.
     if not os.path.exists(config_path):
-        print("Bad configuration!\nUsage example: ./simple_httpfs ./config/server.ini, The \
+        print("Bad configuration path!\nusage example: ./simple_httpfs ./config/server.ini, The \
 default config load for: " + defaultConfigPath)
         sys.exit(1)
 
@@ -381,7 +386,7 @@ default config load for: " + defaultConfigPath)
     mime_types = cf.get("fs.rendering", "mime_types")
     form_tpl = cf.get("fs.rendering", "form_tpl")
     listing_tpl = cf.get("fs.rendering", "listing_tpl")
-    data_dir = cf.get("fs.data", "data_dir"))
+    data_dir = cf.get("fs.data", "data_dir")
     # print(acl_list[0]["auth"] + " => " + acl_list[0]["auth"])
 
     # mime types.
