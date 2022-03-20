@@ -58,17 +58,25 @@ EOF
 sudo systemctl restart nginx
 ```
 
-- Startup
+- Installation
 
 ```bash
 git clone https://gitee.com/wl4g/simple_httpfs.git
 cd simple_httpfs/
 
-# Run
-./apps/simple_httpfs.py config/server.ini
-
-# Build & package
+# Build package
 make
+
+# Copy configuration
+sudo mkdir -p /etc/simplehttpfs/
+sudo cp config/* /etc/simplehttpfs/
+
+# Installing systemd
+sudo cp scripts/systemd/simplehttpfs.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart simplehttpfs
+sudo systemctl status simplehttpfs
+sudo journalctl -afu simplehttpfs
 ```
 
 - Browser access
