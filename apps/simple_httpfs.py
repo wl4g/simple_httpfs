@@ -353,19 +353,28 @@ def to_mime_info(item):
     return None
 
 
+def to_absolute_path(path):
+    if not path.startswith("/"):  # Relative path?
+        # The absolute path of the main execution file.
+        # see:https://www.cnblogs.com/chengd/p/7100782.html
+        return sys.path[0] + "/../" + path
+    return path
+
+
 if __name__ == '__main__':
     # Parse configuration.
     config_path = defaultConfigPath
     if len(sys.argv) > 1:  # The sys.argv[0] is this file.
         config_path = sys.argv[1]
+
     # Check config existing.
     if not os.path.exists(config_path):
         print("Bad configuration!\nUsage example: ./simple_httpfs ./config/server.ini, The \
 default config load for: " + defaultConfigPath)
         sys.exit(1)
 
-    # [BUGFIX]: The special character '%' cannot be used, otherwise an 
-    # error of 'ConfigParser.InterpolationSyntaxError: ‘%’ must be followed ...' will be reported
+    # [BUGFIX]: The special character '%' cannot be used, otherwise an
+    # error of 'ConfigParser.InterpolationSyntaxError: '%' must be followed ...' will be reported
     # see:https://blog.csdn.net/s740556472/article/details/82889758
     cf = configparser.RawConfigParser()
     cf.read(config_path)
@@ -377,10 +386,10 @@ default config load for: " + defaultConfigPath)
     auth_token_name = cf.get("http.auth", "auth_token_name")
     acl_rules = cf.options("http.acl")
     acl_list = list(map(to_acl_info, acl_rules))
-    mime_types = cf.get("fs.rendering", "mime_types")
-    form_tpl = cf.get("fs.rendering", "form_tpl")
-    listing_tpl = cf.get("fs.rendering", "listing_tpl")
-    data_dir = cf.get("fs.data", "data_dir")
+    mime_types = to_absolute_path(cf.get("fs.rendering", "mime_types"))
+    form_tpl = to_absolute_path(cf.get("fs.rendering", "form_tpl"))
+    listing_tpl = to_absolute_path(cf.get("fs.rendering", "listing_tpl"))
+    data_dir = to_absolute_path(cf.get("fs.data", "data_dir"))
     # print(acl_list[0]["auth"] + " => " + acl_list[0]["auth"])
 
     # mime types.
