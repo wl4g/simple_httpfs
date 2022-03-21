@@ -144,7 +144,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         secure = secure = "" if schema.startswith("http") else "secure"
         domain = self.headers.get('Host', "localhost")
         # for example: "Tue, 15 Mar 2023 14:40:46 -0000"
-        expiration = datetime.datetime.now() + datetime.timedelta(seconds=deltaSeconds)
+        expiration = datetime.datetime.now() + datetime.timedelta(seconds=float(deltaSeconds))
         expires = expiration.strftime("%a, %d-%b-%Y %H:%M:%S PST")
         cookie = "{}={}; domain={}; path=/; expires={}; {}; HttpOnly".format(self.auth_token_name,
                                                                              token,
@@ -270,6 +270,12 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         listing_html = "<li><a target='_self' href='../'>../</a></li>\n"
         for file_name in file_list:
             full_file_name = req_file_path + "/" + file_name
+            # Check files or directies has permission display.
+            if not self.is_authorized0(full_file_name, "r"):
+                self.log_message(
+                    "file or directory object '%s' no permission display.", full_file_name)
+                continue
+
             file_href = base_uri + self.path + file_name
             file_display_name = file_name
             file_size = os.path.getsize(full_file_name)
