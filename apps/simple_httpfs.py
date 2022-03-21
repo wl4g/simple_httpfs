@@ -24,6 +24,8 @@ defaultFormTpl = "/etc/simplehttpfs/form.tpl"
 defaultListingTpl = "/etc/simplehttpfs/index.tpl"
 defaultServerVersion = "SimpleHTTPFS/2"
 defaultAuthTokenName = "__tk"
+defaultAuthTokenExpirationSeconds = 3600
+defaultAnonymousUsername = "anonymous"
 
 
 class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -32,6 +34,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     data_dir = os.getcwd()
     listing_tpl = defaultListingTpl
     auth_token_name = defaultAuthTokenName
+    auth_token_expiration_seconds = defaultAuthTokenExpirationSeconds
     current_authenticated_token_cookie = ""
 
     # Replace server headers from "Server: BaseHTTP/0.6 Python/3.6.7"
@@ -39,19 +42,19 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     sys_version = ""  # replaces Python/3.6.7
 
     def do_HEAD(self):
-        if not self.is_authenticated("r"):
+        if not self.is_authorized("r"):
             return self.send_unauthentication()
         return self.do_get_index_page(False)
 
     def do_GET(self):
         if self.is_logout_request():
             return self.send_unauthentication()
-        if not self.is_authenticated("r"):
+        if not self.is_authorized("r"):
             return self.send_unauthentication()
         return self.do_get_index_page(False)
 
     def do_POST(self):
-        if not self.is_authenticated("r,w"):
+        if not self.is_authorized("r,w"):
             return self.send_unauthentication()
 
         post_form = cgi.FieldStorage(
@@ -77,31 +80,34 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         uri_path = self.clean_path()
         return uri_path == "/logout"
 
-    def is_authenticated(self, permit):
+    def is_authorized(self, permit):
         uri_path = self.clean_path()
+        return self.is_authorized0(uri_path, permit)
 
+    def is_authorized0(self, uri_path, permit):
         request_token = self.get_auth_token()
-        if request_token == None or request_token == '':
-            self.log_message(
-                "Failed to authentication. request auth is required! path: '%s'", self.path)
-            return False
+        if request_token != None and request_token != '':
+            decode_token = base64.b64decode(request_token).decode("utf-8")
+            username = decode_token.split(":")[0]
 
-        decode_token = base64.b64decode(request_token).decode("utf-8")
-        username = decode_token.split(":")[0]
+            # Gets auth acl by uri and permit.
+            acl = self.match_auth_acl(username, uri_path, permit)
 
-        # Gets auth key by ACL
-        auth_key = self.match_auth_key(username, uri_path, permit)
+            # Matching authentication token
+            if acl != None and request_token == acl["auth"]:
+                self.set_auth_token(
+                    acl["auth"], self.auth_token_expiration_seconds)
+                return True
+            else:
+                self.log_message(
+                    "Failed to authentication. request auth: '%s', path: '%s'", request_token, self.path)
+                return False
+        else:  # is anonymous request.
+            acl = self.match_auth_acl(
+                defaultAnonymousUsername, uri_path, permit)
+            return acl != None
 
-        # Matching authentication token
-        if request_token == auth_key:
-            self.set_auth_token(auth_key, 3600)
-            return True
-        else:
-            self.log_message(
-                "Failed to authentication. request auth: '%s', path: '%s'", request_token, self.path)
-            return False
-
-    def match_auth_key(self, username, uri_path, permit):
+    def match_auth_acl(self, username, uri_path, permit):
         for acl in self.acl_list:
             # Matching request username.
             if acl["username"] == username:
@@ -114,7 +120,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                             if rule["permit"].find(p) < 0:
                                 permit_matched = False
                         if permit_matched:
-                            return acl["auth"]
+                            return acl
         return None
 
     def get_auth_token(self):
@@ -125,7 +131,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             return token.split(" ")[1]
         # Second get from cookie
         cookies = self.headers.get('Cookie', '')
-        if cookies != '':
+        if cookies != '' and cookies != None:
             for cookie in cookies.split(";"):
                 name = cookie.split("=")[0]
                 value = cookie[len(self.auth_token_name)+1:]
@@ -175,7 +181,6 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     #     self.clean_path()
     #     if len(self.path) <= 1:
     #         return True
-
     #     # for example: http://example.com// => //
     #     for part in self.path.split("/"):
     #         if len(part) > 0 and part != "/":
@@ -286,7 +291,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
         listing_tpl = open(self.listing_tpl, encoding="utf-8")
         form_content = "<!-- multipart from (non permission) -->"
-        if self.is_authenticated("r,w"):
+        if self.is_authorized("r,w"):
             form_content = ""
             form_lines = open(self.form_tpl, encoding="utf-8").readlines()
             for line in form_lines:
@@ -303,6 +308,7 @@ def start_https_server(listen_addr,
                        form_tpl,
                        listing_tpl,
                        auth_token_name,
+                       auth_token_expiration_seconds,
                        acl_list,
                        data_dir):
     SimpleHTTPfsRequestHandler.server_version = server_version
@@ -310,6 +316,7 @@ def start_https_server(listen_addr,
     SimpleHTTPfsRequestHandler.form_tpl = form_tpl
     SimpleHTTPfsRequestHandler.listing_tpl = listing_tpl
     SimpleHTTPfsRequestHandler.auth_token_name = auth_token_name
+    SimpleHTTPfsRequestHandler.auth_token_expiration_seconds = auth_token_expiration_seconds
     SimpleHTTPfsRequestHandler.acl_list = acl_list
     SimpleHTTPfsRequestHandler.data_dir = data_dir
 
@@ -335,10 +342,14 @@ def get_now_date():
 def to_acl_info(item):
     username = item
     acl = json.loads(cf.get("http.acl", username))
-    auth = username + ":" + acl["password"]
-    auth = base64.b64encode(auth.encode("utf-8")).decode("utf-8")
-    acl["auth"] = auth
-    acl["username"] = username
+    if username == defaultAnonymousUsername:
+        acl["username"] = username
+        acl["auth"] = None
+    else:
+        acl["username"] = username
+        auth = username + ":" + acl["password"]
+        auth = base64.b64encode(auth.encode("utf-8")).decode("utf-8")
+        acl["auth"] = auth
     return acl
 
 
@@ -380,6 +391,8 @@ default config load for: " + defaultConfigPath)
     server_version = cf.get("http.server", "server_version")
     cert_file = cf.get("http.server", "cert_file")
     auth_token_name = cf.get("http.auth", "auth_token_name")
+    auth_token_expiration_seconds = cf.get(
+        "http.auth", "auth_token_expiration_seconds")
     acl_rules = cf.options("http.acl")
     acl_list = list(map(to_acl_info, acl_rules))
     mime_types = cf.get("fs.rendering", "mime_types")
@@ -404,5 +417,6 @@ default config load for: " + defaultConfigPath)
         form_tpl,
         listing_tpl,
         auth_token_name,
+        auth_token_expiration_seconds,
         acl_list,
         data_dir)
