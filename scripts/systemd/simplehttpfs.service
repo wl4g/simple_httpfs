@@ -13,7 +13,7 @@
 Description=Simple HttpFS
 
 [Service]
-#Type=fork
+Type=simple
 #User=simplehttpfs
 #Group=simplehttpfs
 EnvironmentFile=-/etc/sysconfig/simplehttpfs
@@ -21,8 +21,8 @@ ExecStart=/bin/simplehttpfs $OPTIONS
 ExecReload=/bin/kill -s HUP
 StandardOutput=journal
 StandardError=journal
-LimitNOFILE=16
-LimitNPROC=16
+LimitNOFILE=1024
+LimitNPROC=1024
 LimitCORE=infinity
 TimeoutStartSec=10
 TimeoutSec=300
