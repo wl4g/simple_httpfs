@@ -98,14 +98,17 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.set_auth_token(
                     acl["auth"], self.auth_token_expiration_seconds)
                 return True
-            else:
-                self.log_message(
-                    "Failed to authentication. request auth: '%s', path: '%s'", request_token, self.path)
-                return False
+            else:  # If the currently logged in user has no permissions, but anonymous users may have permissions.
+                if self.match_auth_acl(
+                        defaultAnonymousUsername, uri_path, permit) != None:
+                    return True
+                else:
+                    self.log_message(
+                        "Failed to authentication. request auth: '%s', path: '%s'", request_token, self.path)
+                    return False
         else:  # is anonymous request.
-            acl = self.match_auth_acl(
-                defaultAnonymousUsername, uri_path, permit)
-            return acl != None
+            return self.match_auth_acl(
+                defaultAnonymousUsername, uri_path, permit) != None
 
     def match_auth_acl(self, username, uri_path, permit):
         for acl in self.acl_list:
