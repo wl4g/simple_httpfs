@@ -205,9 +205,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
         # Response files html
         if os.path.isdir(req_file_path):
-            contents_html = self.render_html_directies(
-                req_file_path,
-                uri_path)
+            contents_html = self.render_html_directies(req_file_path, uri_path)
             # self.log_message("Render html:\n%s", contents_html)
 
             self.send_response(200)
@@ -257,11 +255,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         hostAndPort = self.headers.get('Host', "localhost")
         return schema + "://" + hostAndPort
 
-    def render_html_directies(self,
-                              req_file_path,
-                              uri_path):
-        self.log_message("Render html by uri: '%s' from directies: '%s'",
-                         uri_path, req_file_path)
+    def render_html_directies(self, req_file_path, uri_path):
+        self.log_message("Render html by uri: '%s' from directies: '%s'", uri_path, req_file_path)
         try:
             file_list = os.listdir(req_file_path)
         except os.error:
@@ -273,8 +268,10 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         listing_html = "<li><a target='_self' href='../'>../</a></li>\n"
         for file_name in file_list:
             full_file_name = req_file_path + "/" + file_name
+            # Clean full file name path. e.g: /mnt/disk1/simplehttpfs//public//111.txt
+            full_file_name = full_file_name.replace('//', '/')
             # Check files or directies has permission display.
-            if not self.is_authorized0(full_file_name, "r"):
+            if not self.is_authorized0(uri_path, "r"):
                 self.log_message(
                     "file or directory object '%s' no permission display.", full_file_name)
                 continue
