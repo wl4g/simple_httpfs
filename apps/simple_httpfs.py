@@ -161,7 +161,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     def send_unauthentication(self):
         self.send_response(401)
         self.send_header("WWW-Authenticate", "Basic realm=HttpBasicRealm")
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/html; charset=utf-8")
         # Cleanup auth info.
         self.set_auth_token("", -1)
         self.send_header("Set-Cookie", self.current_authenticated_token_cookie)
@@ -232,7 +232,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             for media in self.mime_list:
                 for suffix in media["suffixs"]:
                     if suffix.lower() == file_ext:
-                        self.send_header("Content-type", media["media"])
+                        self.send_header("Content-type", media["media"] + "; charset=utf-8")
                         is_find_media = True
                         break
             if not is_find_media:
