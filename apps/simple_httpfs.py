@@ -22,6 +22,7 @@ defaultConfigPath = "/etc/simplehttpfs/server.ini"
 defaultMimeTypes = "/etc/simplehttpfs/mime.types"
 defaultFormTpl = "/etc/simplehttpfs/form.tpl"
 defaultListingTpl = "/etc/simplehttpfs/index.tpl"
+defaultHrefIndexEnabled = "1"
 defaultServerVersion = "SimpleHTTPFS/2"
 defaultAuthTokenName = "__tk"
 defaultAuthTokenExpirationSeconds = 3600
@@ -33,6 +34,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     form_tpl = defaultFormTpl
     data_dir = os.getcwd()
     listing_tpl = defaultListingTpl
+    href_index_enabled = defaultHrefIndexEnabled
     auth_token_name = defaultAuthTokenName
     auth_token_expiration_seconds = defaultAuthTokenExpirationSeconds
     current_authenticated_token_cookie = ""
@@ -305,16 +307,19 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                 form_content += line
 
         # see:https://pythonhowto.readthedocs.io/zh_CN/latest/string.html#id25
-        return listing_tpl.read().format(convert_index_href_html(uri_path), form_content, listing_html).encode("utf-8")
+        return listing_tpl.read().format(convert_index_href_html(self, uri_path), form_content, listing_html).encode("utf-8")
 
-def convert_index_href_html(uri_path):
-    href_html = ''
-    href_uri = '/'
-    for part in uri_path.split("/"):
-        if part != '' and len(part) > 0:
-            href_uri += part + '/'
-            href_html += '/<a class="index-line" href="' + href_uri + '">' + part + '</a>'
-    return href_html
+def convert_index_href_html(self, uri_path):
+    if self.href_index_enabled == '1' or self.href_index_enabled.upper() == 'TRUE':
+        href_html = ''
+        href_uri = '/'
+        for part in uri_path.split("/"):
+            if part != '' and len(part) > 0:
+                href_uri += part + '/'
+                href_html += '/<a class="index-line" href="' + href_uri + '">' + part + '</a>'
+        return href_html
+    else:
+        return uri_path
 
 def start_https_server(listen_addr,
                        listen_port,
@@ -323,6 +328,7 @@ def start_https_server(listen_addr,
                        mime_list,
                        form_tpl,
                        listing_tpl,
+                       href_index_enabled,
                        auth_token_name,
                        auth_token_expiration_seconds,
                        acl_list,
@@ -331,6 +337,7 @@ def start_https_server(listen_addr,
     SimpleHTTPfsRequestHandler.mime_list = mime_list
     SimpleHTTPfsRequestHandler.form_tpl = form_tpl
     SimpleHTTPfsRequestHandler.listing_tpl = listing_tpl
+    SimpleHTTPfsRequestHandler.href_index_enabled = href_index_enabled
     SimpleHTTPfsRequestHandler.auth_token_name = auth_token_name
     SimpleHTTPfsRequestHandler.auth_token_expiration_seconds = auth_token_expiration_seconds
     SimpleHTTPfsRequestHandler.acl_list = acl_list
@@ -414,6 +421,7 @@ default config load for: " + defaultConfigPath)
     mime_types = cf.get("fs.rendering", "mime_types")
     form_tpl = cf.get("fs.rendering", "form_tpl")
     listing_tpl = cf.get("fs.rendering", "listing_tpl")
+    href_index_enabled = cf.get("fs.rendering", "href_index_enabled")
     data_dir = cf.get("fs.data", "data_dir")
     # print(acl_list[0]["auth"] + " => " + acl_list[0]["auth"])
 
@@ -432,6 +440,7 @@ default config load for: " + defaultConfigPath)
         mime_list,
         form_tpl,
         listing_tpl,
+        href_index_enabled,
         auth_token_name,
         auth_token_expiration_seconds,
         acl_list,
