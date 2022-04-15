@@ -269,14 +269,15 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         for file_name in file_list:
             full_file_name = req_file_path + "/" + file_name
             # Clean full file name path. e.g: /mnt/disk1/simplehttpfs//public//111.txt
-            full_file_name = full_file_name.replace('//', '/')
+            full_file_name = full_file_name.replace('//', '/') # clean path of '/'
             # Check files or directies has permission display.
             if not self.is_authorized0(uri_path, "r"):
                 self.log_message(
                     "file or directory object '%s' no permission display.", full_file_name)
                 continue
 
-            file_href = base_uri + self.path + file_name
+            file_href_path = self.path + '/' + file_name
+            file_href = base_uri + file_href_path.replace('//', '/') # clean path of '/'
             file_display_name = file_name
             file_size = os.path.getsize(full_file_name)
             file_mtime = os.path.getmtime(full_file_name)
@@ -303,8 +304,17 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             for line in form_lines:
                 form_content += line
 
-        return listing_tpl.read().format(uri_path, form_content, listing_html).encode("utf-8")
+        # see:https://pythonhowto.readthedocs.io/zh_CN/latest/string.html#id25
+        return listing_tpl.read().format(convert_index_href_html(uri_path), form_content, listing_html).encode("utf-8")
 
+def convert_index_href_html(uri_path):
+    href_html = ''
+    href_uri = '/'
+    for part in uri_path.split("/"):
+        if part != '' and len(part) > 0:
+            href_uri += part + '/'
+            href_html += '/<a class="index-line" href="' + href_uri + '">' + part + '</a>'
+    return href_html
 
 def start_https_server(listen_addr,
                        listen_port,
