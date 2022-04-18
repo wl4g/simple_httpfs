@@ -23,6 +23,8 @@ defaultMimeTypes = "/etc/simplehttpfs/mime.types"
 defaultFormTpl = "/etc/simplehttpfs/form.tpl"
 defaultListingTpl = "/etc/simplehttpfs/index.tpl"
 defaultHrefIndexEnabled = "1"
+defaultAccessTimeEnabled = "1"
+defaultFileSizeEnabled = "1"
 defaultServerVersion = "SimpleHTTPFS/2"
 defaultAuthTokenName = "__tk"
 defaultAuthTokenExpirationSeconds = 3600
@@ -35,6 +37,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     data_dir = os.getcwd()
     listing_tpl = defaultListingTpl
     href_index_enabled = defaultHrefIndexEnabled
+    access_time_enabled = defaultAccessTimeEnabled
+    file_size_enabled = defaultFileSizeEnabled
     auth_token_name = defaultAuthTokenName
     auth_token_expiration_seconds = defaultAuthTokenExpirationSeconds
     current_authenticated_token_cookie = ""
@@ -234,7 +238,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
             for media in self.mime_list:
                 for suffix in media["suffixs"]:
                     if suffix.lower() == file_ext:
-                        self.send_header("Content-type", media["media"] + "; charset=utf-8")
+                        self.send_header(
+                            "Content-type", media["media"] + "; charset=utf-8")
                         is_find_media = True
                         break
             if not is_find_media:
@@ -258,7 +263,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         return schema + "://" + hostAndPort
 
     def render_html_directies(self, req_file_path, uri_path):
-        self.log_message("Render html by uri: '%s' from directies: '%s'", uri_path, req_file_path)
+        self.log_message(
+            "Render html by uri: '%s' from directies: '%s'", uri_path, req_file_path)
         try:
             file_list = os.listdir(req_file_path)
         except os.error:
@@ -271,7 +277,8 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         for file_name in file_list:
             full_file_name = req_file_path + "/" + file_name
             # Clean full file name path. e.g: /mnt/disk1/simplehttpfs//public//111.txt
-            full_file_name = full_file_name.replace('//', '/') # clean path of '/'
+            full_file_name = full_file_name.replace(
+                '//', '/')  # clean path of '/'
             # Check files or directies has permission display.
             if not self.is_authorized0(uri_path, "r"):
                 self.log_message(
@@ -279,12 +286,19 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
                 continue
 
             file_href_path = self.path + '/' + file_name
-            file_href = base_uri + file_href_path.replace('//', '/') # clean path of '/'
+            file_href = base_uri + \
+                file_href_path.replace('//', '/')  # clean path of '/'
             file_display_name = file_name
-            file_size = os.path.getsize(full_file_name)
             file_mtime = os.path.getmtime(full_file_name)
-            format_mtime = time.strftime(
-                "%Z %z %Y-%m-%d %H:%M:%S", time.localtime(file_mtime))
+            if self.access_time_enabled == '1' or self.access_time_enabled.upper() == 'TRUE':
+                format_mtime = time.strftime(
+                    "%Z %z %Y-%m-%d %H:%M:%S", time.localtime(file_mtime))
+            else:
+                format_mtime = ''
+            if self.file_size_enabled == '1' or self.file_size_enabled.upper() == 'TRUE':
+                file_size = sizeFormatToRight(os.path.getsize(full_file_name))
+            else:
+                file_size = ''
 
             if os.path.isdir(full_file_name):
                 file_display_name = file_name + "/"
@@ -294,7 +308,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
 
             # file_href = urllib.parse.quote(file_href)
             listing_html = listing_html + \
-                "<li><a target='_self' href=\"{}\">{}</a><span style='position:absolute;float:right;right:55%;'>{}<span><span style='position:absolute;float:right;right:-100%;'>{} B<span></li>\n".format(
+                "<li><a class=\"list-file-href\" target='_self' href=\"{}\">{}</a><span class=\"list-file-access-time\">{}</span><span class=\"list-file-size\">{}</span></li>\n".format(
                     file_href, file_display_name, format_mtime, file_size
                 )
 
@@ -309,6 +323,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         # see:https://pythonhowto.readthedocs.io/zh_CN/latest/string.html#id25
         return listing_tpl.read().format(convert_index_href_html(self, uri_path), form_content, listing_html).encode("utf-8")
 
+
 def convert_index_href_html(self, uri_path):
     if self.href_index_enabled == '1' or self.href_index_enabled.upper() == 'TRUE':
         href_html = ''
@@ -321,6 +336,42 @@ def convert_index_href_html(self, uri_path):
     else:
         return uri_path
 
+
+def sizeFormatToRight(size, is_disk=False, precision=1):
+    sizeStr = sizeFormat(size, is_disk, precision)
+    sizeStr = format('%10s' % sizeStr)
+    sizeStr = sizeStr.replace(" ", "&nbsp;")
+    return sizeStr
+
+
+def sizeFormat(size, is_disk=False, precision=1):
+    '''
+    size format for human.
+        byte      ---- (B)
+        kilobyte  ---- (KB)
+        megabyte  ---- (MB)
+        gigabyte  ---- (GB)
+        terabyte  ---- (TB)
+        petabyte  ---- (PB)
+        exabyte   ---- (EB)
+        zettabyte ---- (ZB)
+        yottabyte ---- (YB)
+    '''
+    formats = ['KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+    unit = 1000.0 if is_disk else 1024.0
+    if not(isinstance(size, float) or isinstance(size, int)):
+        raise TypeError('a float number or an integer number is required!')
+    if size < 0:
+        raise ValueError('number must be non-negative')
+    if size < 1024:
+        return f'{size} B'
+    for i in formats:
+        size /= unit
+        if size < unit:
+            return f'{round(size, precision)} {i}'
+    return f'{round(size, precision)} {i}'
+
+
 def start_https_server(listen_addr,
                        listen_port,
                        server_version,
@@ -329,6 +380,8 @@ def start_https_server(listen_addr,
                        form_tpl,
                        listing_tpl,
                        href_index_enabled,
+                       access_time_enabled,
+                       file_size_enabled,
                        auth_token_name,
                        auth_token_expiration_seconds,
                        acl_list,
@@ -338,6 +391,8 @@ def start_https_server(listen_addr,
     SimpleHTTPfsRequestHandler.form_tpl = form_tpl
     SimpleHTTPfsRequestHandler.listing_tpl = listing_tpl
     SimpleHTTPfsRequestHandler.href_index_enabled = href_index_enabled
+    SimpleHTTPfsRequestHandler.access_time_enabled = access_time_enabled
+    SimpleHTTPfsRequestHandler.file_size_enabled = file_size_enabled
     SimpleHTTPfsRequestHandler.auth_token_name = auth_token_name
     SimpleHTTPfsRequestHandler.auth_token_expiration_seconds = auth_token_expiration_seconds
     SimpleHTTPfsRequestHandler.acl_list = acl_list
@@ -422,6 +477,8 @@ default config load for: " + defaultConfigPath)
     form_tpl = cf.get("fs.rendering", "form_tpl")
     listing_tpl = cf.get("fs.rendering", "listing_tpl")
     href_index_enabled = cf.get("fs.rendering", "href_index_enabled")
+    access_time_enabled = cf.get("fs.rendering", "access_time_enabled")
+    file_size_enabled = cf.get("fs.rendering", "file_size_enabled")
     data_dir = cf.get("fs.data", "data_dir")
     # print(acl_list[0]["auth"] + " => " + acl_list[0]["auth"])
 
@@ -441,6 +498,8 @@ default config load for: " + defaultConfigPath)
         form_tpl,
         listing_tpl,
         href_index_enabled,
+        access_time_enabled,
+        file_size_enabled,
         auth_token_name,
         auth_token_expiration_seconds,
         acl_list,
