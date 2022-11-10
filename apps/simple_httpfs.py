@@ -25,6 +25,7 @@ defaultListingTpl = "/etc/simplehttpfs/index.tpl"
 defaultHrefIndexEnabled = "1"
 defaultAccessTimeEnabled = "1"
 defaultFileSizeEnabled = "1"
+defaultHiddenFileEnabled = "1"
 defaultServerVersion = "SimpleHTTPFS/2"
 defaultAuthTokenName = "__tk"
 defaultAuthTokenExpirationSeconds = 3600
@@ -39,6 +40,7 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
     href_index_enabled = defaultHrefIndexEnabled
     access_time_enabled = defaultAccessTimeEnabled
     file_size_enabled = defaultFileSizeEnabled
+    hidden_file_enabled = defaultHiddenFileEnabled
     auth_token_name = defaultAuthTokenName
     auth_token_expiration_seconds = defaultAuthTokenExpirationSeconds
     current_authenticated_token_cookie = ""
@@ -275,6 +277,10 @@ class SimpleHTTPfsRequestHandler(http.server.BaseHTTPRequestHandler):
         # uri_path = uri_path = '' if self.path == '/' '' else self.path
         listing_html = "<li><a target='_self' href='../'>../</a></li>\n"
         for file_name in file_list:
+            # Filtering hidden files
+            if file_name.startswith('.') and (self.hidden_file_enabled == '1' or self.hidden_file_enabled.upper() == 'TRUE'):
+                continue
+
             full_file_name = req_file_path + "/" + file_name
             # Clean full file name path. e.g: /mnt/disk1/simplehttpfs//public//111.txt
             full_file_name = full_file_name.replace(
@@ -382,6 +388,7 @@ def start_https_server(listen_addr,
                        href_index_enabled,
                        access_time_enabled,
                        file_size_enabled,
+                       hidden_file_enabled,
                        auth_token_name,
                        auth_token_expiration_seconds,
                        acl_list,
@@ -393,6 +400,7 @@ def start_https_server(listen_addr,
     SimpleHTTPfsRequestHandler.href_index_enabled = href_index_enabled
     SimpleHTTPfsRequestHandler.access_time_enabled = access_time_enabled
     SimpleHTTPfsRequestHandler.file_size_enabled = file_size_enabled
+    SimpleHTTPfsRequestHandler.hidden_file_enabled = hidden_file_enabled
     SimpleHTTPfsRequestHandler.auth_token_name = auth_token_name
     SimpleHTTPfsRequestHandler.auth_token_expiration_seconds = auth_token_expiration_seconds
     SimpleHTTPfsRequestHandler.acl_list = acl_list
@@ -479,6 +487,7 @@ default config load for: " + defaultConfigPath)
     href_index_enabled = cf.get("fs.rendering", "href_index_enabled")
     access_time_enabled = cf.get("fs.rendering", "access_time_enabled")
     file_size_enabled = cf.get("fs.rendering", "file_size_enabled")
+    hidden_file_enabled = cf.get("fs.rendering", "hidden_file_enabled")
     data_dir = cf.get("fs.data", "data_dir")
     # print(acl_list[0]["auth"] + " => " + acl_list[0]["auth"])
 
@@ -500,6 +509,7 @@ default config load for: " + defaultConfigPath)
         href_index_enabled,
         access_time_enabled,
         file_size_enabled,
+        hidden_file_enabled,
         auth_token_name,
         auth_token_expiration_seconds,
         acl_list,
